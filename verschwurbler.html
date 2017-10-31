@@ -1,0 +1,205 @@
+<html>
+	<head>
+		<title>
+			Verschwurbler 1.2
+		</title>
+	</head>
+	<body style="margin-left: 20px;">
+		<h1>Custom HTML text obfuscation</h1>
+		<br/>
+		<p>
+			All the characters from displayed text need to be contained in shadow text. Press 'fix shadow text' to append the missing characters in random order.
+		</p>
+		<br/>
+		Custom CSS: 
+		<textarea id="customCSS" rows="4" cols="50">
+position:absolute;
+font-family:Courier;
+</textarea>
+		  Extra spacing per character: <input value="1" id="extraSpacing" type="text"/>
+		<h2>displayed text</h2>
+		<br/>
+		<textarea id="displayInput" rows="8" cols="80"></textarea>
+		<br/>
+		<h2>shadow text</h2>
+		<br/>
+		<textarea id="shadowInput" rows="8" cols="80"></textarea>
+		<br/>
+		<br/>
+		<button onclick="fixShadowInput();">fix shadow text</button>
+		<br/>
+		<br/>
+		<button onclick="render();">render!</button>
+		<br/>
+		<br/>
+		<h2>output HTML</h2>
+		<br/>
+			<textarea id="codeOutput" rows="4" cols="80"></textarea>
+		<br/>
+		<br/>
+		<div id="renderedOutput">
+		</div>
+		<br/>
+		<script>
+			// TODO?: support for em/vw font sizes?
+			
+			var SINGLE_CHARACTER_ELEMENT_TYPE = "SPAN";
+			
+			var characterWidthCache = [];
+			var characterHeight;
+			var extraSpacing = 1;
+			
+			function getHTML() {
+				var displayInput = document.getElementById("displayInput").value;
+				var shadowInput = document.getElementById("shadowInput").value;
+				extraSpacing = parseInt(document.getElementById("extraSpacing").value);
+				
+				var shadowInputMap = [];
+				var shadowInputElementArray = [];
+				// make a map of maps which contain the locations of characters 
+				for (var i = 0; i < shadowInput.length; i++) {
+					var character = shadowInput.charAt(i);
+					if (!shadowInputMap[character]) {
+						shadowInputMap[character] = [];
+					}
+					shadowInputMap[character].push(i);
+					
+					// make an array of actual html elements
+					var element;
+					if (character == '\n') {
+						element = document.createElement("BR");
+					} else {
+						element = document.createElement(SINGLE_CHARACTER_ELEMENT_TYPE);
+						element.style.position = "absolute";
+						// make them invisible by default
+						element.style.top = "9999px";
+						element.style.left = "9999px";
+						// append
+						element.appendChild(document.createTextNode(character));
+					}
+					shadowInputElementArray.push(element);
+				}
+				
+				// change the style attribute of the created elements
+				var yOffset = 0;
+				var xOffset = 0;
+				for (var i = 0; i < displayInput.length; i++) {
+					var character = displayInput.charAt(i);
+					
+					// handle linebreaks
+					if (character == '\n') {
+						yOffset += getCharacterHeight();
+						xOffset = 0;
+					} else {
+						var index = shadowInputMap[character].pop();
+						var element = shadowInputElementArray[index];
+						element.style.left = xOffset;
+						element.style.top = yOffset;
+						
+						xOffset += getCharacterWidth(character);
+					}
+				}
+				
+				// put everything together
+				var div = document.createElement("DIV");
+				div.style = document.getElementById("customCSS").value;
+				
+				for (var i = 0; i < shadowInputElementArray.length; i++) {
+					div.appendChild(shadowInputElementArray[i]);
+				}
+				
+				return div.outerHTML;
+			}
+			
+			
+			function getCharacterWidth(character) {	// (plus spacing)
+				// measuring works only with &nsbp;
+				if (character == ' ') {	//normal space
+					character = ' ';	//&nsbp;
+				}
+				if (characterWidthCache[character]) {
+					return characterWidthCache[character];
+				} else {
+					var measuringDiv = document.createElement("DIV");
+					measuringDiv.style = document.getElementById("customCSS").value + "height: auto;width: auto;top: 9999px;left: 9999px;"
+					measuringDiv.appendChild(document.createTextNode(character));
+					document.body.appendChild(measuringDiv);
+					var width = measuringDiv.clientWidth + extraSpacing;
+					document.body.removeChild(measuringDiv);
+					characterWidthCache[character] = width;
+					return width;
+				}
+			}
+			
+			// TODO: calculate dynamically
+			function getCharacterHeight() {
+				if (!characterHeight) {
+					var measuringDiv = document.createElement("DIV");
+					measuringDiv.style = document.getElementById("customCSS").value + "height: auto;width: auto;top: 9999px;left: 9999px;"
+					measuringDiv.appendChild(document.createTextNode("a"));
+					document.body.appendChild(measuringDiv);
+					characterHeight = measuringDiv.clientHeight;
+					document.body.removeChild(measuringDiv);
+				}
+				return characterHeight;
+			}
+			
+			// TODO?: put this in an iframe with origin null, so that I don't have to worry about XSS when I let people specify an external stylesheet?
+			function render() {
+				characterHeight = undefined;
+				characterWidthCache = [];	// clear the cache before every rendering in case a different font was chosen
+				var renderedOutputElement = document.getElementById("renderedOutput");
+				var codeOutputElement = document.getElementById("codeOutput");
+				
+				renderedOutputElement.innerHTML = "";
+				codeOutputElement.value = "";
+				
+				var resultHTML = getHTML();
+				
+				renderedOutputElement.innerHTML = resultHTML;
+				codeOutputElement.value = resultHTML;
+			}
+			
+			//TODO: finish
+			function fixShadowInput() {
+				var shadowInput = document.getElementById("shadowInput").value;
+				var displayInput = document.getElementById("displayInput").value;
+				
+				// histogram of the characters contained in shadowInput
+				var shadowInputHistogram = [];
+				for (var i = 0; i < shadowInput.length; i++) {
+					var character = shadowInput.charAt(i);
+					if (!shadowInputHistogram[character]) {
+						shadowInputHistogram[character] = 0;
+					}
+					shadowInputHistogram[character]++;
+				}
+				
+				var additionalCharacters = [];
+				for (var i = 0; i < displayInput.length; i++) {
+					var character = displayInput.charAt(i);
+					if (shadowInputHistogram[character] > 0) {
+						shadowInputHistogram[character]--;
+					} else {
+						additionalCharacters.push(character);
+					}
+				}
+			
+				shuffleArray(additionalCharacters);
+				
+				document.getElementById("shadowInput").value = shadowInput + additionalCharacters.join("");
+			}
+			
+			function shuffleArray(array) {
+				for (var i = array.length - 1; i > 0; i--) {
+					var j = Math.floor(Math.random() * (i + 1));
+					var temp = array[i];
+					array[i] = array[j];
+					array[j] = temp;
+				}
+				return array;
+			}
+			
+		</script>
+	</body>
+</html>
